@@ -40,6 +40,7 @@ body{background:#0c0e0f;min-height:100vh;font-family:'IBM Plex Mono',monospace;c
 </style>
 </head>
 <body>
+
 <div class="header">
   <div class="logo">PROPERTY OPS</div>
   <div style="display:flex;gap:5px;">
@@ -47,47 +48,349 @@ body{background:#0c0e0f;min-height:100vh;font-family:'IBM Plex Mono',monospace;c
     <button class="view-btn" id="btn-admin" onclick="adminClick()">ADMIN</button>
   </div>
 </div>
+
 <div id="error-area"></div>
 <div id="josh-view"></div>
 <div id="admin-view"></div>
 <div class="toast" id="toast"></div>
+
 <div class="pin-overlay" id="pin-overlay">
   <div class="pin-box">
     <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:#d4a843;letter-spacing:3px;margin-bottom:14px;">ADMIN ACCESS</div>
-    <input class="ops-input" type="password" id="pin-input" placeholder="PIN" style="text-align:center;letter-spacing:6px;font-size:18px;margin-bottom:7px;" onkeydown="if(event.key==='Enter')tryPin()">
+    <input class="ops-input" type="password" id="pin-input" placeholder="PIN"
+      style="text-align:center;letter-spacing:6px;font-size:18px;margin-bottom:7px;"
+      onkeydown="if(event.key==='Enter')tryPin()">
     <div id="pin-err" style="font-size:10px;color:#e07b39;letter-spacing:2px;margin-bottom:7px;display:none;">INCORRECT PIN</div>
     <button class="btn btn-gold" style="width:100%;padding:9px;" onclick="tryPin()">ENTER</button>
     <button style="background:none;border:none;color:#555;width:100%;margin-top:8px;cursor:pointer;font-size:11px;font-family:'IBM Plex Mono',monospace;" onclick="closePin()">CANCEL</button>
   </div>
 </div>
+
 <script>
 const SUPA_URL="https://ymfgcxdmytiyndpjoywe.supabase.co";
 const SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InltZmdjeGRteXRpeW5kcGpveXdlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0OTk3OTAsImV4cCI6MjA5NjA3NTc5MH0.Y3Th1BZGjgArWCiddnhVn6Q8PsxkUcWRnr2bunc9y1g";
 const ADMIN_PIN="1014";
 const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-const LEVELS=[{min:0,name:"Rookie",color:"#888"},{min:200,name:"Groundskeeper",color:"#7ec8e3"},{min:500,name:"Handyman",color:"#a8d8a8"},{min:1000,name:"Pro",color:"#d4a843"},{min:2000,name:"Foreman",color:"#e07b39"},{min:3500,name:"Legend",color:"#c084fc"}];
-let tasks=[],completions=[],currentView="josh",newTask={title:"",xp:100,dollars:10},showAdd=false;
+const LEVELS=[
+  {min:0,name:"Rookie",color:"#888"},
+  {min:200,name:"Groundskeeper",color:"#7ec8e3"},
+  {min:500,name:"Handyman",color:"#a8d8a8"},
+  {min:1000,name:"Pro",color:"#d4a843"},
+  {min:2000,name:"Foreman",color:"#e07b39"},
+  {min:3500,name:"Legend",color:"#c084fc"}
+];
+
+let tasks=[], completions=[], currentView="josh", newTask={title:"",xp:100,dollars:10}, showAdd=false;
+
 function getLevel(xp){let l=LEVELS[0];for(const x of LEVELS){if(xp>=x.min)l=x;}return l;}
 function getNext(xp){for(let i=0;i<LEVELS.length-1;i++){if(xp<LEVELS[i+1].min)return LEVELS[i+1];}return null;}
-async function supaFetch(path,method="GET",body=null){const opts={method,headers:{"apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY,"Content-Type":"application/json","Prefer":"return=representation"}};if(body)opts.body=JSON.stringify(body);const r=await fetch(SUPA_URL+"/rest/v1/"+path,opts);if(!r.ok){const t=await r.text();throw new Error(t);}const txt=await r.text();return txt?JSON.parse(txt):null;}
-async function loadData(){try{const[t,c]=await Promise.all([supaFetch("tasks?select=*"),supaFetch("completions?select=*&order=completed_at.desc")]);tasks=t||[];completions=c||[];document.getElementById("error-area").innerHTML="";}catch(e){document.getElementById("error-area").innerHTML=`<div class="error-bar">Connection error: ${e.message}</div>`;}renderAll();}
-function showToast(msg){const t=document.getElementById("toast");t.textContent=msg;t.style.display="block";setTimeout(()=>t.style.display="none",2500);}
-function getMonthStats(){const now=new Date();const currentMonth=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");const monthC=completions.filter(c=>c.month===currentMonth);const approved=monthC.filter(c=>c.approved);const pending=monthC.filter(c=>!c.approved);const allApproved=completions.filter(c=>c.approved);const allTimeXP=allApproved.reduce((s,c)=>{const t=tasks.find(x=>x.id===c.task_id);return s+(t?.xp||0);},0);const monthBonus=approved.reduce((s,c)=>{const t=tasks.find(x=>x.id===c.task_id);return s+(t?.dollars||0);},0);const monthXP=approved.reduce((s,c)=>{const t=tasks.find(x=>x.id===c.task_id);return s+(t?.xp||0);},0);const monthLabel=MONTHS[now.getMonth()]+" "+now.getFullYear();return{currentMonth,monthLabel,approved,pending,allTimeXP,monthBonus,monthXP};}
-function renderAll(){renderJosh();renderAdmin();}
-function renderJosh(){const{monthLabel,approved,pending,allTimeXP,monthBonus,monthXP}=getMonthStats();const lvl=getLevel(allTimeXP);const nextLvl=getNext(allTimeXP);const progressPct=nextLvl?Math.round(((allTimeXP-lvl.min)/(nextLvl.min-lvl.min))*100):100;const baseTasks=tasks.filter(t=>t.is_base);const extraTasks=tasks.filter(t=>!t.is_base);function isPending(tid){return pending.some(c=>c.task_id===tid);}
-document.getElementById("josh-view").innerHTML=`<div class="section"><div class="card" style="border-left:3px solid ${lvl.color};margin-bottom:14px;"><div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><div style="font-size:9px;letter-spacing:3px;color:#555;">CURRENT LEVEL</div><div style="font-family:'Bebas Neue',sans-serif;font-size:26px;color:${lvl.color};letter-spacing:2px;">${lvl.name}</div></div><div style="text-align:right;"><div style="font-size:9px;color:#555;letter-spacing:2px;">ALL-TIME XP</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#d4a843;">${allTimeXP.toLocaleString()}</div></div></div>${nextLvl?`<div style="margin-top:10px;"><div style="display:flex;justify-content:space-between;font-size:9px;color:#555;letter-spacing:1px;margin-bottom:4px;"><span>${progressPct}% TO ${nextLvl.name.toUpperCase()}</span><span>${nextLvl.min-allTimeXP} XP AWAY</span></div><div class="bar-wrap"><div style="width:${progressPct}%;height:100%;background:${lvl.color};transition:width 0.8s;"></div></div></div>`:`<div style="font-size:10px;color:#c084fc;margin-top:8px;letter-spacing:2px;">MAX LEVEL REACHED</div>`}</div></div><div style="padding:0 18px;"><div class="label">${monthLabel}</div><div class="stat-grid"><div class="stat"><div class="stat-num" style="color:#d4a843;">$${Math.round(100+monthBonus)}</div><div class="stat-lbl">TOTAL PAY</div></div><div class="stat"><div class="stat-num" style="color:#6dbf6d;">+$${monthBonus.toFixed(0)}</div><div class="stat-lbl">BONUS</div></div><div class="stat"><div class="stat-num" style="color:#7ec8e3;">${monthXP}</div><div class="stat-lbl">XP THIS MO</div></div></div></div><div class="section"><div class="label">BASE DUTIES — $100/mo</div>${baseTasks.map(t=>{const done=isPending(t.id)||approved.some(c=>c.task_id===t.id);return`<div class="row" style="opacity:${done?0.5:1};"><div class="row-title">${t.title}</div><button class="btn ${done?'btn-dim':'btn-gold'}" ${done?'disabled':''} onclick="markComplete('${t.id}')">${done?"DONE":"LOG IT"}</button></div>`;}).join("")}</div><div class="section"><div class="label">EXTRA TASKS — EARN BONUS</div>${extraTasks.length===0?`<div style="font-size:11px;color:#444;padding:10px 0;letter-spacing:1px;">No extra tasks yet</div>`:""}${extraTasks.map(t=>{const pend=isPending(t.id);return`<div class="row"><div><div class="row-title">${t.title}</div><div style="display:flex;gap:6px;margin-top:4px;"><span class="xp-badge">+${t.xp} XP</span><span class="dollar-badge">+$${t.dollars}</span></div></div><button class="btn ${pend?'btn-dim':'btn-gold'}" ${pend?'disabled':''} onclick="markComplete('${t.id}')">${pend?"PENDING":"COMPLETE"}</button></div>`;}).join("")}</div>${pending.length>0?`<div style="padding:14px 18px 0;"><div style="background:#161a12;border:1px solid #2a3a1a;padding:9px 13px;font-size:11px;color:#6dbf6d;letter-spacing:1px;">${pending.length} task${pending.length>1?"s":""} pending Levi's approval</div></div>`:""}`;}
-function renderAdmin(){const{monthLabel,approved,pending,monthBonus}=getMonthStats();const extraTasks=tasks.filter(t=>!t.is_base);document.getElementById("admin-view").innerHTML=`<div class="section"><div class="label">OVERVIEW — ${monthLabel}</div><div class="stat-grid"><div class="stat"><div class="stat-num" style="color:#d4a843;">$${Math.round(100+monthBonus)}</div><div class="stat-lbl">TOTAL OWED</div></div><div class="stat"><div class="stat-num" style="color:#e07b39;">${pending.length}</div><div class="stat-lbl">PENDING</div></div><div class="stat"><div class="stat-num" style="color:#6dbf6d;">${approved.length}</div><div class="stat-lbl">APPROVED</div></div></div></div>${pending.length>0?`<div class="section"><div class="label">NEEDS APPROVAL</div>${pending.map(c=>{const task=tasks.find(t=>t.id===c.task_id);const d=new Date(c.completed_at);return`<div class="pending-row"><div><div style="font-size:12px;color:#d0c8b8;">${task?.title||"Unknown"}</div><div style="font-size:10px;color:#555;margin-top:2px;letter-spacing:1px;">${d.toLocaleDateString()} · ${task?.xp>0?`+${task.xp} XP · +$${task.dollars}`:"BASE DUTY"}</div></div><div style="display:flex;gap:5px;"><button class="btn btn-green" onclick="approve('${c.id}')">✓</button><button class="btn btn-red" onclick="reject('${c.id}')">✕</button></div></div>`;}).join("")}</div>`:""}${approved.length>0?`<div class="section"><div class="label">APPROVED THIS MONTH</div>${approved.map(c=>{const task=tasks.find(t=>t.id===c.task_id);const d=new Date(c.completed_at);return`<div class="row" style="opacity:0.65;"><div><div style="font-size:12px;color:#d0c8b8;">${task?.title||""}</div><div style="font-size:9px;color:#555;margin-top:2px;">${d.toLocaleDateString()}</div></div><div style="display:flex;align-items:center;gap:8px;">${task?.xp>0?`<span class="xp-badge">+${task.xp} XP</span>`:""}<button style="background:none;border:none;color:#444;cursor:pointer;font-size:14px;" onclick="reject('${c.id}')">✕</button></div></div>`;}).join("")}</div>`""}<div class="section"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><div class="label" style="margin:0;">MANAGE TASKS</div><button class="btn btn-gold" onclick="toggleAdd()">+ ADD</button></div><div id="add-form"></div>${extraTasks.map(t=>`<div class="row"><div><div class="row-title">${t.title}</div><div style="display:flex;gap:6px;margin-top:4px;"><span class="xp-badge">+${t.xp} XP</span><span class="dollar-badge">+$${t.dollars}</span></div></div><button class="btn-outline" onclick="removeTask('${t.id}')">REMOVE</button></div>`).join("")}</div>`;renderAddForm();}
-function renderAddForm(){const el=document.getElementById("add-form");if(!el)return;if(!showAdd){el.innerHTML="";return;}el.innerHTML=`<div class="card" style="margin-bottom:10px;"><input class="ops-input" style="margin-bottom:7px;" placeholder="Task name" id="new-title" value="${newTask.title}" oninput="newTask.title=this.value"><div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px;"><div><div style="font-size:9px;color:#555;letter-spacing:2px;margin-bottom:3px;">XP VALUE</div><input class="ops-input" type="number" value="${newTask.xp}" oninput="newTask.xp=this.value"></div><div><div style="font-size:9px;color:#555;letter-spacing:2px;margin-bottom:3px;">$ BONUS</div><input class="ops-input" type="number" value="${newTask.dollars}" oninput="newTask.dollars=this.value"></div></div><button class="btn btn-gold" style="width:100%;padding:9px;" onclick="addTask()">SAVE TASK</button></div>`;}
+
+async function supaFetch(path,method="GET",body=null){
+  const opts={method,headers:{"apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY,"Content-Type":"application/json","Prefer":"return=representation"}};
+  if(body) opts.body=JSON.stringify(body);
+  const r=await fetch(SUPA_URL+"/rest/v1/"+path,opts);
+  if(!r.ok){const t=await r.text();throw new Error(t);}
+  const txt=await r.text();
+  return txt?JSON.parse(txt):null;
+}
+
+async function loadData(){
+  try{
+    const [t,c]=await Promise.all([
+      supaFetch("tasks?select=*"),
+      supaFetch("completions?select=*&order=completed_at.desc")
+    ]);
+    tasks=t||[]; completions=c||[];
+    document.getElementById("error-area").innerHTML="";
+  }catch(e){
+    document.getElementById("error-area").innerHTML=`<div class="error-bar">Connection error: ${e.message}</div>`;
+  }
+  renderAll();
+}
+
+function showToast(msg){
+  const t=document.getElementById("toast");
+  t.textContent=msg; t.style.display="block";
+  setTimeout(()=>t.style.display="none",2500);
+}
+
+function getMonthStats(){
+  const now=new Date();
+  const currentMonth=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
+  const monthC=completions.filter(c=>c.month===currentMonth);
+  const approved=monthC.filter(c=>c.approved);
+  const pending=monthC.filter(c=>!c.approved);
+  const allApproved=completions.filter(c=>c.approved);
+  const allTimeXP=allApproved.reduce((s,c)=>{const t=tasks.find(x=>x.id===c.task_id);return s+(t?.xp||0);},0);
+  const monthBonus=approved.reduce((s,c)=>{const t=tasks.find(x=>x.id===c.task_id);return s+(t?.dollars||0);},0);
+  const monthXP=approved.reduce((s,c)=>{const t=tasks.find(x=>x.id===c.task_id);return s+(t?.xp||0);},0);
+  const monthLabel=MONTHS[now.getMonth()]+" "+now.getFullYear();
+  return{currentMonth,monthLabel,approved,pending,allTimeXP,monthBonus,monthXP};
+}
+
+function renderAll(){
+  renderJosh();
+  renderAdmin();
+}
+
+function renderJosh(){
+  const {monthLabel,approved,pending,allTimeXP,monthBonus,monthXP}=getMonthStats();
+  const lvl=getLevel(allTimeXP);
+  const nextLvl=getNext(allTimeXP);
+  const progressPct=nextLvl?Math.round(((allTimeXP-lvl.min)/(nextLvl.min-lvl.min))*100):100;
+  const baseTasks=tasks.filter(t=>t.is_base);
+  const extraTasks=tasks.filter(t=>!t.is_base);
+  function isPending(tid){return pending.some(c=>c.task_id===tid);}
+
+  document.getElementById("josh-view").innerHTML=`
+  <div class="section">
+    <div class="card" style="border-left:3px solid ${lvl.color};margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <div style="font-size:9px;letter-spacing:3px;color:#555;">CURRENT LEVEL</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;color:${lvl.color};letter-spacing:2px;">${lvl.name}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:9px;color:#555;letter-spacing:2px;">ALL-TIME XP</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#d4a843;">${allTimeXP.toLocaleString()}</div>
+        </div>
+      </div>
+      ${nextLvl?`
+      <div style="margin-top:10px;">
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:#555;letter-spacing:1px;margin-bottom:4px;">
+          <span>${progressPct}% TO ${nextLvl.name.toUpperCase()}</span>
+          <span>${nextLvl.min-allTimeXP} XP AWAY</span>
+        </div>
+        <div class="bar-wrap"><div style="width:${progressPct}%;height:100%;background:${lvl.color};transition:width 0.8s;"></div></div>
+      </div>`:`<div style="font-size:10px;color:#c084fc;margin-top:8px;letter-spacing:2px;">MAX LEVEL REACHED</div>`}
+    </div>
+  </div>
+
+  <div style="padding:0 18px;">
+    <div class="label">${monthLabel}</div>
+    <div class="stat-grid">
+      <div class="stat"><div class="stat-num" style="color:#d4a843;">$${Math.round(100+monthBonus)}</div><div class="stat-lbl">TOTAL PAY</div></div>
+      <div class="stat"><div class="stat-num" style="color:#6dbf6d;">+$${monthBonus.toFixed(0)}</div><div class="stat-lbl">BONUS</div></div>
+      <div class="stat"><div class="stat-num" style="color:#7ec8e3;">${monthXP}</div><div class="stat-lbl">XP THIS MO</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="label">BASE DUTIES — $100/mo</div>
+    ${baseTasks.map(t=>{
+      const done=isPending(t.id)||approved.some(c=>c.task_id===t.id);
+      return`<div class="row" style="opacity:${done?0.5:1};">
+        <div class="row-title">${t.title}</div>
+        <button class="btn ${done?'btn-dim':'btn-gold'}" ${done?'disabled':''} onclick="markComplete('${t.id}')">
+          ${done?"DONE":"LOG IT"}
+        </button>
+      </div>`;
+    }).join("")}
+  </div>
+
+  <div class="section">
+    <div class="label">EXTRA TASKS — EARN BONUS</div>
+    ${extraTasks.length===0?`<div style="font-size:11px;color:#444;padding:10px 0;letter-spacing:1px;">No extra tasks yet</div>`:""}
+    ${extraTasks.map(t=>{
+      const pend=isPending(t.id);
+      return`<div class="row">
+        <div>
+          <div class="row-title">${t.title}</div>
+          <div style="display:flex;gap:6px;margin-top:4px;">
+            <span class="xp-badge">+${t.xp} XP</span>
+            <span class="dollar-badge">+$${t.dollars}</span>
+          </div>
+        </div>
+        <button class="btn ${pend?'btn-dim':'btn-gold'}" ${pend?'disabled':''} onclick="markComplete('${t.id}')">
+          ${pend?"PENDING":"COMPLETE"}
+        </button>
+      </div>`;
+    }).join("")}
+  </div>
+
+  ${pending.length>0?`<div style="padding:14px 18px 0;">
+    <div style="background:#161a12;border:1px solid #2a3a1a;padding:9px 13px;font-size:11px;color:#6dbf6d;letter-spacing:1px;">
+      ${pending.length} task${pending.length>1?"s":""} pending Levi's approval
+    </div>
+  </div>`:""}`;
+}
+
+function renderAdmin(){
+  const {monthLabel,approved,pending,monthBonus}=getMonthStats();
+  const extraTasks=tasks.filter(t=>!t.is_base);
+
+  document.getElementById("admin-view").innerHTML=`
+  <div class="section">
+    <div class="label">OVERVIEW — ${monthLabel}</div>
+    <div class="stat-grid">
+      <div class="stat"><div class="stat-num" style="color:#d4a843;">$${Math.round(100+monthBonus)}</div><div class="stat-lbl">TOTAL OWED</div></div>
+      <div class="stat"><div class="stat-num" style="color:#e07b39;">${pending.length}</div><div class="stat-lbl">PENDING</div></div>
+      <div class="stat"><div class="stat-num" style="color:#6dbf6d;">${approved.length}</div><div class="stat-lbl">APPROVED</div></div>
+    </div>
+  </div>
+
+  ${pending.length>0?`<div class="section">
+    <div class="label">NEEDS APPROVAL</div>
+    ${pending.map(c=>{
+      const task=tasks.find(t=>t.id===c.task_id);
+      const d=new Date(c.completed_at);
+      return`<div class="pending-row">
+        <div>
+          <div style="font-size:12px;color:#d0c8b8;">${task?.title||"Unknown"}</div>
+          <div style="font-size:10px;color:#555;margin-top:2px;letter-spacing:1px;">${d.toLocaleDateString()} · ${task?.xp>0?`+${task.xp} XP · +$${task.dollars}`:"BASE DUTY"}</div>
+        </div>
+        <div style="display:flex;gap:5px;">
+          <button class="btn btn-green" onclick="approve('${c.id}')">✓</button>
+          <button class="btn btn-red" onclick="reject('${c.id}')">✕</button>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`:""}
+
+  ${approved.length>0?`<div class="section">
+    <div class="label">APPROVED THIS MONTH</div>
+    ${approved.map(c=>{
+      const task=tasks.find(t=>t.id===c.task_id);
+      const d=new Date(c.completed_at);
+      return`<div class="row" style="opacity:0.65;">
+        <div>
+          <div style="font-size:12px;color:#d0c8b8;">${task?.title||""}</div>
+          <div style="font-size:9px;color:#555;margin-top:2px;">${d.toLocaleDateString()}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${task?.xp>0?`<span class="xp-badge">+${task.xp} XP</span>`:""}
+          <button style="background:none;border:none;color:#444;cursor:pointer;font-size:14px;" onclick="reject('${c.id}')">✕</button>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`:""}
+
+  <div class="section">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div class="label" style="margin:0;">MANAGE TASKS</div>
+      <button class="btn btn-gold" onclick="toggleAdd()">+ ADD</button>
+    </div>
+    <div id="add-form"></div>
+    ${extraTasks.map(t=>`<div class="row">
+      <div>
+        <div class="row-title">${t.title}</div>
+        <div style="display:flex;gap:6px;margin-top:4px;">
+          <span class="xp-badge">+${t.xp} XP</span>
+          <span class="dollar-badge">+$${t.dollars}</span>
+        </div>
+      </div>
+      <button class="btn-outline" onclick="removeTask('${t.id}')">REMOVE</button>
+    </div>`).join("")}
+  </div>`;
+
+  renderAddForm();
+}
+
+function renderAddForm(){
+  const el=document.getElementById("add-form");
+  if(!el) return;
+  if(!showAdd){el.innerHTML="";return;}
+  el.innerHTML=`<div class="card" style="margin-bottom:10px;">
+    <input class="ops-input" style="margin-bottom:7px;" placeholder="Task name" id="new-title" value="${newTask.title}" oninput="newTask.title=this.value">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px;">
+      <div>
+        <div style="font-size:9px;color:#555;letter-spacing:2px;margin-bottom:3px;">XP VALUE</div>
+        <input class="ops-input" type="number" value="${newTask.xp}" oninput="newTask.xp=this.value">
+      </div>
+      <div>
+        <div style="font-size:9px;color:#555;letter-spacing:2px;margin-bottom:3px;">$ BONUS</div>
+        <input class="ops-input" type="number" value="${newTask.dollars}" oninput="newTask.dollars=this.value">
+      </div>
+    </div>
+    <button class="btn btn-gold" style="width:100%;padding:9px;" onclick="addTask()">SAVE TASK</button>
+  </div>`;
+}
+
 function toggleAdd(){showAdd=!showAdd;renderAddForm();}
-function switchView(v){currentView=v;document.getElementById("josh-view").style.display=v==="josh"?"block":"none";document.getElementById("admin-view").style.display=v==="admin"?"block":"none";document.getElementById("btn-josh").className="view-btn"+(v==="josh"?" active":"");document.getElementById("btn-admin").className="view-btn"+(v==="admin"?" active":"");}
-function adminClick(){if(currentView==="admin"){switchView("josh");}else{document.getElementById("pin-overlay").style.display="flex";setTimeout(()=>document.getElementById("pin-input").focus(),50);}}
-function tryPin(){const val=document.getElementById("pin-input").value;if(val===ADMIN_PIN){document.getElementById("pin-overlay").style.display="none";document.getElementById("pin-input").value="";document.getElementById("pin-err").style.display="none";switchView("admin");}else{document.getElementById("pin-err").style.display="block";}}
-function closePin(){document.getElementById("pin-overlay").style.display="none";document.getElementById("pin-input").value="";document.getElementById("pin-err").style.display="none";}
-async function markComplete(taskId){const task=tasks.find(t=>t.id===taskId);const now=new Date();const month=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");try{const res=await supaFetch("completions","POST",{id:Date.now().toString(),task_id:taskId,completed_at:now.toISOString(),month,approved:false});if(res&&res[0])completions.unshift(res[0]);showToast(task?.is_base?"Logged!":"+"+(task?.xp||0)+" XP pending approval");}catch(e){showToast("Error: "+e.message);}renderAll();}
-async function approve(id){try{await supaFetch("completions?id=eq."+id,"PATCH",{approved:true});completions=completions.map(c=>c.id===id?{...c,approved:true}:c);showToast("Approved");}catch(e){showToast("Error");}renderAll();}
-async function reject(id){try{await supaFetch("completions?id=eq."+id,"DELETE");completions=completions.filter(c=>c.id!==id);showToast("Removed");}catch(e){showToast("Error");}renderAll();}
-async function addTask(){if(!newTask.title.trim())return;const task={id:"t"+Date.now(),title:newTask.title.trim(),xp:Number(newTask.xp),dollars:Number(newTask.dollars),is_base:false};try{const res=await supaFetch("tasks","POST",task);if(res&&res[0])tasks.push(res[0]);else tasks.push(task);newTask={title:"",xp:100,dollars:10};showAdd=false;showToast("Task added");}catch(e){showToast("Error: "+e.message);}renderAll();}
-async function removeTask(id){try{await supaFetch("tasks?id=eq."+id,"DELETE");tasks=tasks.filter(t=>t.id!==id);showToast("Removed");}catch(e){showToast("Error");}renderAll();}
+
+function switchView(v){
+  currentView=v;
+  document.getElementById("josh-view").style.display=v==="josh"?"block":"none";
+  document.getElementById("admin-view").style.display=v==="admin"?"block":"none";
+  document.getElementById("btn-josh").className="view-btn"+(v==="josh"?" active":"");
+  document.getElementById("btn-admin").className="view-btn"+(v==="admin"?" active":"");
+}
+
+function adminClick(){
+  if(currentView==="admin"){switchView("josh");}
+  else{document.getElementById("pin-overlay").style.display="flex";setTimeout(()=>document.getElementById("pin-input").focus(),50);}
+}
+
+function tryPin(){
+  const val=document.getElementById("pin-input").value;
+  if(val===ADMIN_PIN){
+    document.getElementById("pin-overlay").style.display="none";
+    document.getElementById("pin-input").value="";
+    document.getElementById("pin-err").style.display="none";
+    switchView("admin");
+  }else{
+    document.getElementById("pin-err").style.display="block";
+  }
+}
+
+function closePin(){
+  document.getElementById("pin-overlay").style.display="none";
+  document.getElementById("pin-input").value="";
+  document.getElementById("pin-err").style.display="none";
+}
+
+async function markComplete(taskId){
+  const task=tasks.find(t=>t.id===taskId);
+  const now=new Date();
+  const month=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
+  try{
+    const res=await supaFetch("completions","POST",{id:Date.now().toString(),task_id:taskId,completed_at:now.toISOString(),month,approved:false});
+    if(res&&res[0])completions.unshift(res[0]);
+    showToast(task?.is_base?"Logged!":"+"+(task?.xp||0)+" XP pending approval");
+  }catch(e){showToast("Error: "+e.message);}
+  renderAll();
+}
+
+async function approve(id){
+  try{
+    await supaFetch("completions?id=eq."+id,"PATCH",{approved:true});
+    completions=completions.map(c=>c.id===id?{...c,approved:true}:c);
+    showToast("Approved");
+  }catch(e){showToast("Error");}
+  renderAll();
+}
+
+async function reject(id){
+  try{
+    await supaFetch("completions?id=eq."+id,"DELETE");
+    completions=completions.filter(c=>c.id!==id);
+    showToast("Removed");
+  }catch(e){showToast("Error");}
+  renderAll();
+}
+
+async function addTask(){
+  if(!newTask.title.trim())return;
+  const task={id:"t"+Date.now(),title:newTask.title.trim(),xp:Number(newTask.xp),dollars:Number(newTask.dollars),is_base:false};
+  try{
+    const res=await supaFetch("tasks","POST",task);
+    if(res&&res[0])tasks.push(res[0]);
+    else tasks.push(task);
+    newTask={title:"",xp:100,dollars:10};showAdd=false;
+    showToast("Task added");
+  }catch(e){showToast("Error: "+e.message);}
+  renderAll();
+}
+
+async function removeTask(id){
+  try{
+    await supaFetch("tasks?id=eq."+id,"DELETE");
+    tasks=tasks.filter(t=>t.id!==id);
+    showToast("Removed");
+  }catch(e){showToast("Error");}
+  renderAll();
+}
+
 switchView("josh");
 loadData();
 </script>
