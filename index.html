@@ -21,6 +21,7 @@ body{background:#0c0e0f;min-height:100vh;font-family:'IBM Plex Mono',monospace;c
 .stat-lbl{font-size:9px;letter-spacing:2px;color:#555;margin-top:2px;}
 .row{display:flex;align-items:center;justify-content:space-between;background:#111316;border:1px solid #1e2126;padding:11px 13px;margin-bottom:5px;}
 .row-title{font-size:12px;color:#d0c8b8;}
+.row-notes{font-size:10px;color:#555;margin-top:4px;letter-spacing:0.5px;line-height:1.5;}
 .xp-badge{background:#1a2a1a;color:#6dbf6d;border:1px solid #3a6a3a;padding:2px 7px;font-size:10px;letter-spacing:1px;}
 .dollar-badge{background:#2a1f0e;color:#d4a843;border:1px solid #4a3a1a;padding:2px 7px;font-size:10px;letter-spacing:1px;}
 .btn{border:none;padding:5px 12px;font-size:11px;letter-spacing:1px;cursor:pointer;font-family:'IBM Plex Mono',monospace;}
@@ -32,11 +33,12 @@ body{background:#0c0e0f;min-height:100vh;font-family:'IBM Plex Mono',monospace;c
 .pending-row{display:flex;align-items:center;justify-content:space-between;background:#161a12;border:1px solid #2a3a1a;padding:9px 13px;margin-bottom:5px;}
 .bar-wrap{background:#1e2126;height:6px;overflow:hidden;margin-top:8px;}
 .ops-input{background:#0c0e0f;border:1px solid #2a2d32;color:#e8e0d0;padding:7px 9px;font-size:12px;font-family:'IBM Plex Mono',monospace;width:100%;}
+.ops-textarea{background:#0c0e0f;border:1px solid #2a2d32;color:#e8e0d0;padding:7px 9px;font-size:12px;font-family:'IBM Plex Mono',monospace;width:100%;resize:vertical;min-height:70px;}
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#d4a843;color:#0c0e0f;padding:9px 18px;font-size:11px;letter-spacing:2px;z-index:999;white-space:nowrap;display:none;}
 .pin-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.88);display:flex;align-items:center;justify-content:center;z-index:99;display:none;}
 .pin-box{background:#111316;border:1px solid #2a2d32;padding:28px 22px;width:260px;}
 .error-bar{background:#2a0e0e;border:1px solid #5a2020;color:#e07b39;padding:10px 14px;font-size:11px;letter-spacing:1px;margin:10px 18px 0;}
-#josh-view, #admin-view{display:none;}
+#josh-view,#admin-view{display:none;}
 </style>
 </head>
 <body>
@@ -72,14 +74,15 @@ const SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 const ADMIN_PIN="1014";
 const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const LEVELS=[
-{min:0,name:"Rookie Ball",color:"#888"},
+  {min:0,name:"Rookie Ball",color:"#888"},
   {min:200,name:"Single-A",color:"#7ec8e3"},
   {min:500,name:"Double-A",color:"#a8d8a8"},
   {min:1000,name:"Triple-A",color:"#d4a843"},
   {min:2000,name:"The Show",color:"#e07b39"},
+  {min:3500,name:"Scrap Iron",color:"#c084fc"}
 ];
 
-let tasks=[], completions=[], currentView="josh", newTask={title:"",xp:100,dollars:10}, showAdd=false;
+let tasks=[],completions=[],currentView="josh",newTask={title:"",xp:100,dollars:10,notes:""},showAdd=false;
 
 function getLevel(xp){let l=LEVELS[0];for(const x of LEVELS){if(xp>=x.min)l=x;}return l;}
 function getNext(xp){for(let i=0;i<LEVELS.length-1;i++){if(xp<LEVELS[i+1].min)return LEVELS[i+1];}return null;}
@@ -99,7 +102,7 @@ async function loadData(){
       supaFetch("tasks?select=*"),
       supaFetch("completions?select=*&order=completed_at.desc")
     ]);
-    tasks=t||[]; completions=c||[];
+    tasks=t||[];completions=c||[];
     document.getElementById("error-area").innerHTML="";
   }catch(e){
     document.getElementById("error-area").innerHTML=`<div class="error-bar">Connection error: ${e.message}</div>`;
@@ -109,7 +112,7 @@ async function loadData(){
 
 function showToast(msg){
   const t=document.getElementById("toast");
-  t.textContent=msg; t.style.display="block";
+  t.textContent=msg;t.style.display="block";
   setTimeout(()=>t.style.display="none",2500);
 }
 
@@ -127,13 +130,10 @@ function getMonthStats(){
   return{currentMonth,monthLabel,approved,pending,allTimeXP,monthBonus,monthXP};
 }
 
-function renderAll(){
-  renderJosh();
-  renderAdmin();
-}
+function renderAll(){renderJosh();renderAdmin();}
 
 function renderJosh(){
-  const {monthLabel,approved,pending,allTimeXP,monthBonus,monthXP}=getMonthStats();
+  const{monthLabel,approved,pending,allTimeXP,monthBonus,monthXP}=getMonthStats();
   const lvl=getLevel(allTimeXP);
   const nextLvl=getNext(allTimeXP);
   const progressPct=nextLvl?Math.round(((allTimeXP-lvl.min)/(nextLvl.min-lvl.min))*100):100;
@@ -178,9 +178,12 @@ function renderJosh(){
     <div class="label">BASE DUTIES — $100/mo</div>
     ${baseTasks.map(t=>{
       const done=isPending(t.id)||approved.some(c=>c.task_id===t.id);
-      return`<div class="row" style="opacity:${done?0.5:1};">
-        <div class="row-title">${t.title}</div>
-        <button class="btn ${done?'btn-dim':'btn-gold'}" ${done?'disabled':''} onclick="markComplete('${t.id}')">
+      return`<div class="row" style="opacity:${done?0.5:1};flex-wrap:wrap;">
+        <div style="flex:1;">
+          <div class="row-title">${t.title}</div>
+          ${t.notes?`<div class="row-notes">${t.notes}</div>`:""}
+        </div>
+        <button class="btn ${done?'btn-dim':'btn-gold'}" ${done?'disabled':''} onclick="markComplete('${t.id}')" style="margin-left:10px;">
           ${done?"DONE":"LOG IT"}
         </button>
       </div>`;
@@ -192,15 +195,16 @@ function renderJosh(){
     ${extraTasks.length===0?`<div style="font-size:11px;color:#444;padding:10px 0;letter-spacing:1px;">No extra tasks yet</div>`:""}
     ${extraTasks.map(t=>{
       const pend=isPending(t.id);
-      return`<div class="row">
-        <div>
+      return`<div class="row" style="flex-wrap:wrap;align-items:flex-start;">
+        <div style="flex:1;">
           <div class="row-title">${t.title}</div>
-          <div style="display:flex;gap:6px;margin-top:4px;">
+          ${t.notes?`<div class="row-notes">${t.notes}</div>`:""}
+          <div style="display:flex;gap:6px;margin-top:6px;">
             <span class="xp-badge">+${t.xp} XP</span>
             <span class="dollar-badge">+$${t.dollars}</span>
           </div>
         </div>
-        <button class="btn ${pend?'btn-dim':'btn-gold'}" ${pend?'disabled':''} onclick="markComplete('${t.id}')">
+        <button class="btn ${pend?'btn-dim':'btn-gold'}" ${pend?'disabled':''} onclick="markComplete('${t.id}')" style="margin-left:10px;margin-top:4px;">
           ${pend?"PENDING":"COMPLETE"}
         </button>
       </div>`;
@@ -215,7 +219,7 @@ function renderJosh(){
 }
 
 function renderAdmin(){
-  const {monthLabel,approved,pending,monthBonus}=getMonthStats();
+  const{monthLabel,approved,pending,monthBonus}=getMonthStats();
   const extraTasks=tasks.filter(t=>!t.is_base);
 
   document.getElementById("admin-view").innerHTML=`
@@ -270,15 +274,16 @@ function renderAdmin(){
       <button class="btn btn-gold" onclick="toggleAdd()">+ ADD</button>
     </div>
     <div id="add-form"></div>
-    ${extraTasks.map(t=>`<div class="row">
-      <div>
+    ${extraTasks.map(t=>`<div class="row" style="flex-wrap:wrap;">
+      <div style="flex:1;">
         <div class="row-title">${t.title}</div>
+        ${t.notes?`<div class="row-notes">${t.notes}</div>`:""}
         <div style="display:flex;gap:6px;margin-top:4px;">
           <span class="xp-badge">+${t.xp} XP</span>
           <span class="dollar-badge">+$${t.dollars}</span>
         </div>
       </div>
-      <button class="btn-outline" onclick="removeTask('${t.id}')">REMOVE</button>
+      <button class="btn-outline" onclick="removeTask('${t.id}')" style="margin-left:10px;">REMOVE</button>
     </div>`).join("")}
   </div>`;
 
@@ -287,11 +292,11 @@ function renderAdmin(){
 
 function renderAddForm(){
   const el=document.getElementById("add-form");
-  if(!el) return;
+  if(!el)return;
   if(!showAdd){el.innerHTML="";return;}
   el.innerHTML=`<div class="card" style="margin-bottom:10px;">
-    <input class="ops-input" style="margin-bottom:7px;" placeholder="Task name" id="new-title" value="${newTask.title}" oninput="newTask.title=this.value">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px;">
+    <input class="ops-input" style="margin-bottom:7px;" placeholder="Task name" oninput="newTask.title=this.value" value="${newTask.title}">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px;">
       <div>
         <div style="font-size:9px;color:#555;letter-spacing:2px;margin-bottom:3px;">XP VALUE</div>
         <input class="ops-input" type="number" value="${newTask.xp}" oninput="newTask.xp=this.value">
@@ -301,6 +306,8 @@ function renderAddForm(){
         <input class="ops-input" type="number" value="${newTask.dollars}" oninput="newTask.dollars=this.value">
       </div>
     </div>
+    <div style="font-size:9px;color:#555;letter-spacing:2px;margin-bottom:3px;">NOTES / INSTRUCTIONS</div>
+    <textarea class="ops-textarea" style="margin-bottom:9px;" placeholder="Tools needed, location, what to do first..." oninput="newTask.notes=this.value">${newTask.notes}</textarea>
     <button class="btn btn-gold" style="width:100%;padding:9px;" onclick="addTask()">SAVE TASK</button>
   </div>`;
 }
@@ -370,12 +377,12 @@ async function reject(id){
 
 async function addTask(){
   if(!newTask.title.trim())return;
-  const task={id:"t"+Date.now(),title:newTask.title.trim(),xp:Number(newTask.xp),dollars:Number(newTask.dollars),is_base:false};
+  const task={id:"t"+Date.now(),title:newTask.title.trim(),xp:Number(newTask.xp),dollars:Number(newTask.dollars),notes:newTask.notes||null,is_base:false};
   try{
     const res=await supaFetch("tasks","POST",task);
     if(res&&res[0])tasks.push(res[0]);
     else tasks.push(task);
-    newTask={title:"",xp:100,dollars:10};showAdd=false;
+    newTask={title:"",xp:100,dollars:10,notes:""};showAdd=false;
     showToast("Task added");
   }catch(e){showToast("Error: "+e.message);}
   renderAll();
